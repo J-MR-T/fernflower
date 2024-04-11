@@ -10,10 +10,8 @@ import org.jetbrains.java.decompiler.main.extern.IFernflowerPreferences;
 import org.jetbrains.java.decompiler.main.rels.ClassWrapper;
 import org.jetbrains.java.decompiler.main.rels.MethodWrapper;
 import org.jetbrains.java.decompiler.modules.decompiler.ExprProcessor;
-import org.jetbrains.java.decompiler.modules.decompiler.exps.AnnotationExprent;
-import org.jetbrains.java.decompiler.modules.decompiler.exps.ConstExprent;
-import org.jetbrains.java.decompiler.modules.decompiler.exps.Exprent;
-import org.jetbrains.java.decompiler.modules.decompiler.exps.NewExprent;
+import org.jetbrains.java.decompiler.modules.decompiler.exps.*;
+import org.jetbrains.java.decompiler.modules.decompiler.stats.BasicBlockStatement;
 import org.jetbrains.java.decompiler.modules.decompiler.stats.RootStatement;
 import org.jetbrains.java.decompiler.modules.decompiler.typeann.TargetInfo;
 import org.jetbrains.java.decompiler.modules.decompiler.typeann.TypeAnnotation;
@@ -281,16 +279,123 @@ public class ClassWriter {
   }
 
   @SuppressWarnings("SpellCheckingInspection")
-  private static boolean isSyntheticRecordMethod(StructClass cl, StructMethod mt, TextBuffer code) {
-    if (cl.getRecordComponents() != null) {
+  private static boolean isSyntheticRecordMethod(StructClass cl, StructMethod mt,
+    RootStatement codeRoot, TextBuffer codeAsText) {
+    // record methods don't need the synthetic attribute: https://docs.oracle.com/javase/specs/jvms/se17/html/jvms-4.html#jvms-4.7.8)
+    // i.e. we need to check whether a given method is synthetic
+
+    var recordComponents = cl.getRecordComponents();
+    if (recordComponents != null) {
       String name = mt.getName(), descriptor = mt.getDescriptor();
       if (name.equals("equals") && descriptor.equals("(Ljava/lang/Object;)Z") ||
           name.equals("hashCode") && descriptor.equals("()I") ||
           name.equals("toString") && descriptor.equals("()Ljava/lang/String;")) {
-        if (code.countLines() == 1) {
-          String str = code.toString().trim();
+        if (codeAsText.countLines() == 1) {
+          String str = codeAsText.toString().trim();
           return str.startsWith("return this." + name + "<invokedynamic>(this");
         }
+      }
+      // implicitly defined vs explicitly defined record constructors don't seem to be distinguishable
+      // so if it's a constructor, check whether the code matches the default generated code
+      // TODO add commandline arg check
+      if(name.equals("<init>")) {
+        // basic checks to try to identify default constructors early
+        StructMethodParametersAttribute params = mt.getAttribute(StructGeneralAttribute.ATTRIBUTE_METHOD_PARAMETERS);
+        if(params == null)
+          return recordComponents.isEmpty() && codeAsText.containsOnlyWhitespaces();
+
+        // check that the parameters are the same
+        var paramsIt = params.getEntries().iterator();
+        var recordFieldsIt = recordComponents.iterator();
+        while(paramsIt.hasNext()) {
+          if(!recordFieldsIt.hasNext() || !paramsIt.next().myName.equals(recordFieldsIt.next().getName()))
+            // not enough or non-matching record fields
+            return false;
+
+        }
+        if(recordFieldsIt.hasNext())
+          return false;
+
+        // analyze the code
+        var first = codeRoot.getFirst();
+        // if the first isn't a bb (or is null, that's implicit)
+        if(!(first instanceof BasicBlockStatement))
+          return false;
+
+        // if the block isn't terminated with a return
+        if(((BasicBlockStatement) first).getBlock().getSeq().getLastInstr().opcode != CodeConstants.opc_return)
+          return false;
+
+        var exprs = first.getExprents();
+
+        // if first doesn't have any exprents (but has parameters -> this can't be auto generated)
+        if(exprs == null)
+          return false;
+
+        // iterate over the record fields again to match them to the initializations here
+        recordFieldsIt = recordComponents.iterator();
+        for(var expr:exprs){
+          if(expr.type != Exprent.EXPRENT_ASSIGNMENT)
+            return false;
+
+          var assignment = (AssignmentExprent) expr;
+
+          if(assignment.getLeft().type != Exprent.EXPRENT_FIELD || assignment.getRight().type != Exprent.EXPRENT_VAR)
+            return false;
+
+          if(!recordFieldsIt.hasNext())
+            return false;
+
+          var currentRecordField = recordFieldsIt.next();
+
+          var left = (FieldExprent) assignment.getLeft();
+          // check whether left is this.<currentRecordField>
+          if(!left.getClassname().equals(cl.qualifiedName) || !left.getName().equals(currentRecordField.getName()))
+            return false;
+
+          // check whether right is <currentRecordField>
+          var right = (VarExprent) assignment.getRight();
+          if(!right.getProcessor().getVarName(right.getVarVersionPair()).equals(currentRecordField.getName()))
+            return false;
+        }
+
+        // if we haven't handled all record fields here, they weren't all properly assigned -> not the default
+        if(recordFieldsIt.hasNext())
+          return false;
+
+
+        return true;
+      }
+      // otherwise, check whether the name is the same as a record component
+      if(recordComponents.stream().anyMatch(comp -> comp.getName().equals(name))) {
+        // if it is, check whether the method just returns the components value -> then it's indistinguishable
+        // form the generated version
+
+        // analyze the code
+        var first = codeRoot.getFirst();
+
+        if(!(first instanceof BasicBlockStatement))
+          return false;
+
+        var exprs = first.getExprents();
+        if(exprs == null || exprs.size() != 1)
+          return false;
+
+        Exprent singleStmt = exprs.get(0);
+        if(singleStmt.type != Exprent.EXPRENT_EXIT)
+          return false;
+
+        var ret = (ExitExprent) singleStmt;
+        var retExpr = ret.getValue();
+        if(retExpr.type != Exprent.EXPRENT_FIELD)
+          return false;
+
+        var retExprField = (FieldExprent) retExpr;
+        if(!retExprField.getClassname().equals(cl.qualifiedName) || !retExprField.getName().equals(name))
+          // we already know that there is a record component with that name, don't need to check for that again
+          return false;
+
+        return true;
       }
     }
     return false;
@@ -855,6 +960,7 @@ public class ClassWriter {
 
         RootStatement root = wrapper.getMethodWrapper(mt.getName(), mt.getDescriptor()).root;
 
+
         if (root != null && !methodWrapper.decompiledWithErrors) { // check for existence
           try {
             // to restore in case of an exception
@@ -863,7 +969,7 @@ public class ClassWriter {
 
             hideMethod = code.length() == 0 &&
               (clInit || dInit || hideConstructor(node, !typeAnnotations.isEmpty(), init, throwsExceptions, paramCount, flags)) ||
-              isSyntheticRecordMethod(cl, mt, code);
+              isSyntheticRecordMethod(cl, mt, root, code);
 
             buffer.append(code);
 
