@@ -15,6 +15,7 @@ public interface IFernflowerPreferences {
   String DECOMPILE_ASSERTIONS = "das";
   String HIDE_EMPTY_SUPER = "hes";
   String HIDE_DEFAULT_CONSTRUCTOR = "hdc";
+  String HIDE_DEFAULT_RECORD_METHODS = "hdr";
   String DECOMPILE_GENERIC_SIGNATURES = "dgs";
   String NO_EXCEPTIONS_RETURN = "ner";
   String ENSURE_SYNCHRONIZED_MONITOR = "esm";
@@ -63,6 +64,7 @@ public interface IFernflowerPreferences {
     defaults.put(DECOMPILE_ASSERTIONS, "1");
     defaults.put(HIDE_EMPTY_SUPER, "1");
     defaults.put(HIDE_DEFAULT_CONSTRUCTOR, "1");
+    defaults.put(HIDE_DEFAULT_RECORD_METHODS, "1");
     defaults.put(DECOMPILE_GENERIC_SIGNATURES, "0");
     defaults.put(NO_EXCEPTIONS_RETURN, "1");
     defaults.put(ENSURE_SYNCHRONIZED_MONITOR, "1");

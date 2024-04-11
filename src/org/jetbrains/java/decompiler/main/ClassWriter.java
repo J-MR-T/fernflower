@@ -295,107 +295,111 @@ public class ClassWriter {
           return str.startsWith("return this." + name + "<invokedynamic>(this");
         }
       }
-      // implicitly defined vs explicitly defined record constructors don't seem to be distinguishable
-      // so if it's a constructor, check whether the code matches the default generated code
-      // TODO add commandline arg check
-      if(name.equals("<init>")) {
-        // basic checks to try to identify default constructors early
-        StructMethodParametersAttribute params = mt.getAttribute(StructGeneralAttribute.ATTRIBUTE_METHOD_PARAMETERS);
-        if(params == null)
-          return recordComponents.isEmpty() && codeAsText.containsOnlyWhitespaces();
 
-        // check that the parameters are the same
-        var paramsIt = params.getEntries().iterator();
-        var recordFieldsIt = recordComponents.iterator();
-        while(paramsIt.hasNext()) {
-          if(!recordFieldsIt.hasNext() || !paramsIt.next().myName.equals(recordFieldsIt.next().getName()))
-            // not enough or non-matching record fields
+      // all other checks hide implicitly defined/default generated methods
+      if(DecompilerContext.getOption(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS)) {
+        // implicitly defined vs explicitly defined record constructors don't seem to be distinguishable
+        // so if it's a constructor, check whether the code matches the default generated code
+
+        if (name.equals("<init>")) {
+          // basic checks to try to identify default constructors early
+          StructMethodParametersAttribute params = mt.getAttribute(StructGeneralAttribute.ATTRIBUTE_METHOD_PARAMETERS);
+          if (params == null)
+            return recordComponents.isEmpty() && codeAsText.containsOnlyWhitespaces();
+
+          // check that the parameters are the same
+          var paramsIt = params.getEntries().iterator();
+          var recordFieldsIt = recordComponents.iterator();
+          while (paramsIt.hasNext()) {
+            if (!recordFieldsIt.hasNext() || !paramsIt.next().myName.equals(recordFieldsIt.next().getName()))
+              // not enough or non-matching record fields
+              return false;
+
+          }
+          if (recordFieldsIt.hasNext())
             return false;
 
+          // analyze the code
+          var first = codeRoot.getFirst();
+          // if the first isn't a bb (or is null, that's implicit)
+          if (!(first instanceof BasicBlockStatement))
+            return false;
+
+          // if the block isn't terminated with a return
+          if (((BasicBlockStatement) first).getBlock().getSeq().getLastInstr().opcode != CodeConstants.opc_return)
+            return false;
+
+          var exprs = first.getExprents();
+
+          // if first doesn't have any exprents (but has parameters -> this can't be auto generated)
+          if (exprs == null)
+            return false;
+
+          // iterate over the record fields again to match them to the initializations here
+          recordFieldsIt = recordComponents.iterator();
+          for (var expr : exprs) {
+            if (expr.type != Exprent.EXPRENT_ASSIGNMENT)
+              return false;
+
+            var assignment = (AssignmentExprent) expr;
+
+            if (assignment.getLeft().type != Exprent.EXPRENT_FIELD || assignment.getRight().type != Exprent.EXPRENT_VAR)
+              return false;
+
+            if (!recordFieldsIt.hasNext())
+              return false;
+
+            var currentRecordField = recordFieldsIt.next();
+
+            var left = (FieldExprent) assignment.getLeft();
+            // check whether left is this.<currentRecordField>
+            if (!left.getClassname().equals(cl.qualifiedName) || !left.getName().equals(currentRecordField.getName()))
+              return false;
+
+            // check whether right is <currentRecordField>
+            var right = (VarExprent) assignment.getRight();
+            if (!right.getProcessor().getVarName(right.getVarVersionPair()).equals(currentRecordField.getName()))
+              return false;
+          }
+
+          // if we haven't handled all record fields here, they weren't all properly assigned -> not the default
+          if (recordFieldsIt.hasNext())
+            return false;
+
+
+          return true;
         }
-        if(recordFieldsIt.hasNext())
-          return false;
+        // otherwise, check whether the name is the same as a record component
+        if (recordComponents.stream().anyMatch(comp -> comp.getName().equals(name))) {
+          // if it is, check whether the method just returns the components value -> then it's indistinguishable
+          // form the generated version
 
-        // analyze the code
-        var first = codeRoot.getFirst();
-        // if the first isn't a bb (or is null, that's implicit)
-        if(!(first instanceof BasicBlockStatement))
-          return false;
+          // analyze the code
+          var first = codeRoot.getFirst();
 
-        // if the block isn't terminated with a return
-        if(((BasicBlockStatement) first).getBlock().getSeq().getLastInstr().opcode != CodeConstants.opc_return)
-          return false;
-
-        var exprs = first.getExprents();
-
-        // if first doesn't have any exprents (but has parameters -> this can't be auto generated)
-        if(exprs == null)
-          return false;
-
-        // iterate over the record fields again to match them to the initializations here
-        recordFieldsIt = recordComponents.iterator();
-        for(var expr:exprs){
-          if(expr.type != Exprent.EXPRENT_ASSIGNMENT)
+          if (!(first instanceof BasicBlockStatement))
             return false;
 
-          var assignment = (AssignmentExprent) expr;
-
-          if(assignment.getLeft().type != Exprent.EXPRENT_FIELD || assignment.getRight().type != Exprent.EXPRENT_VAR)
+          var exprs = first.getExprents();
+          if (exprs == null || exprs.size() != 1)
             return false;
 
-          if(!recordFieldsIt.hasNext())
+          Exprent singleStmt = exprs.get(0);
+          if (singleStmt.type != Exprent.EXPRENT_EXIT)
             return false;
 
-          var currentRecordField = recordFieldsIt.next();
-
-          var left = (FieldExprent) assignment.getLeft();
-          // check whether left is this.<currentRecordField>
-          if(!left.getClassname().equals(cl.qualifiedName) || !left.getName().equals(currentRecordField.getName()))
+          var ret = (ExitExprent) singleStmt;
+          var retExpr = ret.getValue();
+          if (retExpr.type != Exprent.EXPRENT_FIELD)
             return false;
 
-          // check whether right is <currentRecordField>
-          var right = (VarExprent) assignment.getRight();
-          if(!right.getProcessor().getVarName(right.getVarVersionPair()).equals(currentRecordField.getName()))
+          var retExprField = (FieldExprent) retExpr;
+          if (!retExprField.getClassname().equals(cl.qualifiedName) || !retExprField.getName().equals(name))
+            // we already know that there is a record component with that name, don't need to check for that again
             return false;
+
+          return true;
         }
-
-        // if we haven't handled all record fields here, they weren't all properly assigned -> not the default
-        if(recordFieldsIt.hasNext())
-          return false;
-
-
-        return true;
-      }
-      // otherwise, check whether the name is the same as a record component
-      if(recordComponents.stream().anyMatch(comp -> comp.getName().equals(name))) {
-        // if it is, check whether the method just returns the components value -> then it's indistinguishable
-        // form the generated version
-
-        // analyze the code
-        var first = codeRoot.getFirst();
-
-        if(!(first instanceof BasicBlockStatement))
-          return false;
-
-        var exprs = first.getExprents();
-        if(exprs == null || exprs.size() != 1)
-          return false;
-
-        Exprent singleStmt = exprs.get(0);
-        if(singleStmt.type != Exprent.EXPRENT_EXIT)
-          return false;
-
-        var ret = (ExitExprent) singleStmt;
-        var retExpr = ret.getValue();
-        if(retExpr.type != Exprent.EXPRENT_FIELD)
-          return false;
-
-        var retExprField = (FieldExprent) retExpr;
-        if(!retExprField.getClassname().equals(cl.qualifiedName) || !retExprField.getName().equals(name))
-          // we already know that there is a record component with that name, don't need to check for that again
-          return false;
-
-        return true;
       }
     }
     return false;
