@@ -160,10 +160,22 @@ public class SingleClassesTest {
 
   //ecj doesn't support here, because it produces code with unnecessary assignments,
   //which can confuse decompiler with ordinary ones
-  @Test public void testSimpleInstanceOfRecordPatternJavac() { doTest("pkg/TestSimpleInstanceOfRecordPatternJavac"); }
-  @Test public void testComplexInstanceOfRecordPatternJavac() { doTest("pkg/TestComplexInstanceOfRecordPatternJavac"); }
-  @Test public void testSwitchWithDeconstructionsWithoutNestedJavac() { doTest("pkg/TestSwitchWithDeconstructionsWithoutNestedJavac"); }
-  @Test public void testSwitchNestedDeconstructionJavac() { doTest("pkg/TestSwitchNestedDeconstructionsJavac"); }
+  @Test public void testSimpleInstanceOfRecordPatternJavac() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "0");
+    doTest("pkg/TestSimpleInstanceOfRecordPatternJavac");
+  }
+  @Test public void testComplexInstanceOfRecordPatternJavac() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "0");
+    doTest("pkg/TestComplexInstanceOfRecordPatternJavac");
+  }
+  @Test public void testSwitchWithDeconstructionsWithoutNestedJavac() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "0");
+    doTest("pkg/TestSwitchWithDeconstructionsWithoutNestedJavac");
+  }
+  @Test public void testSwitchNestedDeconstructionJavac() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "0");
+    doTest("pkg/TestSwitchNestedDeconstructionsJavac");
+  }
 
   // TODO: fix all below
   //@Test public void testUnionType() { doTest("pkg/TestUnionType"); }
@@ -175,11 +187,57 @@ public class SingleClassesTest {
   @Test public void testSuspendLambda() { doTest("pkg/TestSuspendLambdaKt"); }
   @Test public void testNamedSuspendFun2Kt() { doTest("pkg/TestNamedSuspendFun2Kt"); }
   @Test public void testGenericArgs() { doTest("pkg/TestGenericArgs"); }
-  @Test public void testRecordEmpty() { doTest("records/TestRecordEmpty"); }
-  @Test public void testRecordSimple() { doTest("records/TestRecordSimple"); }
-  @Test public void testRecordVararg() { doTest("records/TestRecordVararg"); }
-  @Test public void testRecordGenericVararg() { doTest("records/TestRecordGenericVararg"); }
-  @Test public void testRecordAnno() { doTest("records/TestRecordAnno"); }
+  @Test public void testRecordEmpty() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "0");
+    doTest("records/TestRecordEmpty");
+  }
+  @Test public void testRecordSimpleDontHideDefaults() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "0");
+    doTest("records/TestRecordSimpleDontHideDefaults");
+  }
+
+  @Test public void testRecordSimpleHideDefaults() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "1");
+    doTest("records/TestRecordSimpleHideDefaults");
+  }
+
+  @Test public void testRecordDontHideAlmostDefaultConstructor() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "1");
+    doTest("records/TestRecordDontHideAlmostDefaultConstructor");
+  }
+
+  @Test public void testRecordHideCorrectAccessors1() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "1");
+    doTest("records/TestRecordHideCorrectAccessors1");
+  }
+
+  @Test public void testRecordHideCorrectAccessors2() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "1");
+    doTest("records/TestRecordHideCorrectAccessors2");
+  }
+
+  @Test public void testRecordDontHideNonAccessors() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "1");
+    doTest("records/TestRecordDontHideNonAccessors");
+  }
+
+  @Test public void testRecordDontHideEmptyConstructor() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "1");
+    doTest("records/TestRecordDontHideEmptyConstructor");
+  }
+
+  @Test public void testRecordVararg() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "0");
+    doTest("records/TestRecordVararg");
+  }
+  @Test public void testRecordGenericVararg() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "0");
+    doTest("records/TestRecordGenericVararg");
+  }
+  @Test public void testRecordAnno() {
+    DecompilerContext.setProperty(IFernflowerPreferences.HIDE_DEFAULT_RECORD_METHODS, "0");
+    doTest("records/TestRecordAnno");
+  }
   @Test public void testRootWithClassInner() { doTest("sealed/RootWithClassInner"); }
   @Test public void testRootWithInterfaceInner() { doTest("sealed/RootWithInterfaceInner"); }
   @Test public void testRootWithClassOuter() { doTest("sealed/RootWithClassOuter",

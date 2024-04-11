@@ -1,0 +1,5 @@
+package records;
+
+public record TestRecordSimpleHideDefaults(int x, int y) {
+}
+

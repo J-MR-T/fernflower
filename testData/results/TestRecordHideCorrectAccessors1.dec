@@ -1,0 +1,15 @@
+public record TestRecordHideCorrectAccessors1(int x, int y) {
+   public int x() {
+      return 0;// 3
+   }
+}
+
+class 'TestRecordHideCorrectAccessors1' {
+   method 'x ()I' {
+      0      2
+      1      2
+   }
+}
+
+Lines mapping:
+3 <-> 3

@@ -1,0 +1,15 @@
+public record TestRecordDontHideNonAccessors(int x, int y) {
+   public int theX() {
+      return this.x;// 4
+   }
+}
+
+class 'TestRecordDontHideNonAccessors' {
+   method 'theX ()I' {
+      1      2
+      4      2
+   }
+}
+
+Lines mapping:
+4 <-> 3
